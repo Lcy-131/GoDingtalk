@@ -1,0 +1,120 @@
+{
+    "anchorReportStatusList": [],
+    "code": 200,
+    "forecastUserModelList": [],
+    "interactionPluginModel": {
+        "pluginList": []
+    },
+    "isLogined": true,
+    "openLiveDetailModel": {
+        "allowRequestAISubtitle": false,
+        "anchor": false,
+        "apptBeginTime": 1776234709000,
+        "assistantList": [],
+        "codeLevel": 3,
+        "coverThumbUrl": "https://dtliving-bj.dingtalk.com/cover/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx_1776234789297_open_live_thumb_640.jpg?auth_key=xxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "coverUrl": "https://dtliving-bj.dingtalk.com/cover/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx_open_live_cover.jpg?auth_key=xxxxxxxxxx-0-0-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "deviceId": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx_xxxxxxx",
+        "disableThumbup": false,
+        "enableH265": false,
+        "enableLinkMic": false,
+        "enableLivingAiAnswer": false,
+        "endTime": 1776241908000,
+        "extension": "{\"minutesUuid\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"enableWaterMask\":\"false\",\"enableLivingAIAnswer\":\"true\",\"allowQuickComment\":\"false\",\"coverThumbOrigMd5\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"deviceId\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx_xxxxxxx\",\"overseaLive\":\"false\",\"sprites\":\"{\\\"isLandscape\\\":1,\\\"playUrlWithoutAuthKey\\\":\\\"http://dtliving-bj.dingtalk.com/live/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx_normal.m3u8\\\",\\\"sliceCount\\\":119,\\\"sliceDuration\\\":60,\\\"sliceWidth\\\":320,\\\"spritesUrl\\\":\\\"https://dtlive-bj.oss-cn-beijing.aliyuncs.com/cover/sprites/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx_sprite.jpeg\\\"}\",\"disableComment\":\"false\",\"enableSubscribeCount\":\"true\",\"coverThumb\":\"http://dtlive-bj.oss-cn-beijing.aliyuncs.com/cover/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx_1776234789297_open_live_thumb_640.jpg\",\"minutesTaskId\":\"262300290\",\"minutes_asr\":\"{\\\"callbackUrl\\\":\\\"https://live.dingtalk.com/api/v1/minutes/callback?uuid=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\\\",\\\"minuteTaskId\\\":262300290,\\\"minutesAsrTaskStatus\\\":3,\\\"pullUrl\\\":\\\"http://dtlive-bj.dingtalk.com/live/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.flv?auth_key=xxxxxxxxxx-0-0-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\\\",\\\"recordId\\\":1776234719118,\\\"useMinutesAsr\\\":true}\",\"disableThumbup\":\"false\",\"live_card_type\":\"unifyStyleLiveAndTopCard\",\"enableLinkMic\":\"0\",\"playbackDuration\":\"7188400\",\"linkMicType\":\"0\",\"allowAudienceLinkMic\":\"true\",\"extVersion\":\"extVersion1776242032314\",\"enableAIChapter\":\"false\",\"hdType\":\"1\",\"guestGrayNewKey\":\"true\",\"disableSyncGroupMsg\":\"true\",\"playbackTempStorageDuration\":\"30\"}",
+        "fromType": 6,
+        "hasLiveChapter": false,
+        "hasSubscribed": false,
+        "inputStreamUrl": "rtmp://dtlive-bj-push.dingtalk.com/live/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx?auth_key=xxxxxxxxxx-0-0-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "isForecast": 0,
+        "isLiveAbord": 0,
+        "isMultiLinkMic": false,
+        "landScape": true,
+        "linkMicType": 0,
+        "liveInteractionSetting": {
+            "allowAudienceLinkMic": true,
+            "allowQuickComment": false,
+            "disableComment": false,
+            "disableSyncGroupMsg": true,
+            "disableThumbup": false,
+            "enableWaterMask": false,
+            "ext": {
+                "orgWaterMaskText": "示例科技有限公司",
+                "userWaterMaskText": "示例用户 0000"
+            }
+        },
+        "liveSecuritySetting": {
+            "liveMarqueeModel": {
+                "copyrightFrequencySec": 1800,
+                "copyrightText": "【版权声明】本直播版权归提供者所有，仅限个人学习，严禁任何形式的录制、传播和账号分享。一经发现，平台将依法保留追究权，情节严重者将承担法律责任。",
+                "enableCopyright": true,
+                "enableMarquee": false,
+                "marqueeFontTransparency": 30,
+                "marqueeFrequencySec": 30,
+                "marqueeText": "示例用户_0000"
+            },
+            "watchUserDidCount": 10
+        },
+        "liveUrl": "http://dtlive-bj.dingtalk.com/live/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.flv?auth_key=xxxxxxxxxx-0-0-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "liveUrlExt": {
+            "liveUrlHigh": "http://dtlive-bj.dingtalk.com/live/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx_h264-720p.flv?auth_key=xxxxxxxxxx-0-0-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "liveUrlLow": "http://dtlive-bj.dingtalk.com/live/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx_h264-360p.flv?auth_key=xxxxxxxxxx-0-0-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "liveUrlNormal": "http://dtlive-bj.dingtalk.com/live/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx_h264-480p.flv?auth_key=xxxxxxxxxx-0-0-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "liveUrlUltraLow": "http://dtlive-bj.dingtalk.com/live/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx_h264-360p.flv?auth_key=xxxxxxxxxx-0-0-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        },
+        "liveUrlHls": "http://dtlive-bj-hls.dingtalk.com/live/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.m3u8?auth_key=xxxxxxxxxx-0-0-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "messageCount": 0,
+        "playbackDuration": 7188400,
+        "playbackPublishing": 0,
+        "playbackUrl": "http://dtliving-bj.dingtalk.com/live/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx_normal.m3u8?auth_key=xxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-0-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "playbackVisible": 1,
+        "praiseCount": 0,
+        "publicLandingUrl": "https://n.dingtalk.com/dingding/live-room/index.html?roomId=xxxxxxxxxxx",
+        "publicType": 2,
+        "recordSeenLevel": 0,
+        "reqUid": 1000000000,
+        "roomCustomExtension": {
+            "anchorViewExtension": {
+                "enableAnchorRelation": false
+            },
+            "bottomToolsExtension": {
+                "extensions": []
+            },
+            "cardExtension": {
+                "extensions": []
+            },
+            "noticeWidgetExtensionModel": {
+                "extension": {}
+            },
+            "praiseConfigExtensionModel": {
+                "extensions": []
+            },
+            "recommendCardExtensionModel": {
+                "extensions": []
+            }
+        },
+        "roomId": "xxxxxxxxxxx",
+        "roomUrl": "https://n.dingtalk.com/dingding/live-room/index.html?roomId=xxxxxxxxxxx",
+        "serverTimestamp": 1776762831651,
+        "spritesModel": {
+            "isLandscape": 1,
+            "playUrlWithoutAuthKey": "http://dtliving-bj.dingtalk.com/live/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx_normal.m3u8",
+            "sliceCount": 119,
+            "sliceDuration": 60,
+            "sliceWidth": 320,
+            "spritesUrl": "https://dtliving-bj.dingtalk.com/cover/sprites/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx_sprite.jpeg?auth_key=xxxxxxxxxx-0-0-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        },
+        "startTime": 1776234719000,
+        "status": 3,
+        "streamStatus": 1,
+        "subscribeCount": 0,
+        "timeLength": 7189393,
+        "title": "示例用户发起的直播",
+        "totalJoinCount": 3,
+        "totalViewCount": 3,
+        "userId": "000000",
+        "userNick": "示例用户",
+        "uuid": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+    },
+    "viewerAvatar": "",
+    "viewerNick": "示例观众"
+}

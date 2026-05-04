@@ -101,6 +101,33 @@ func normalizePathForRuntime(path string) string {
 	return normalizePathForTarget(path, runtime.GOOS, isWSLEnvironment())
 }
 
+// resolveRelativePath 将相对路径转换为绝对路径
+// 如果路径已经是绝对路径，则保持不变
+// 如果路径是相对路径，则相对于可执行文件所在目录进行解析
+func resolveRelativePath(path string) string {
+	// 如果路径已经是绝对路径，直接返回
+	if filepath.IsAbs(path) {
+		return path
+	}
+	
+	// 获取可执行文件所在目录
+	exePath, err := os.Executable()
+	if err != nil {
+		// 如果获取可执行文件路径失败，尝试使用当前工作目录
+		cwd, err := os.Getwd()
+		if err != nil {
+			return path // 如果连当前目录都获取失败，返回原路径
+		}
+		return filepath.Join(cwd, path)
+	}
+	
+	// 获取可执行文件所在目录
+	exeDir := filepath.Dir(exePath)
+	
+	// 将相对路径转换为绝对路径
+	return filepath.Join(exeDir, path)
+}
+
 // sanitizeFileName 清理文件名中的非法字符，替换为下划线
 func sanitizeFileName(fileName string) string {
 	// 定义非法字符的正则表达式
@@ -145,7 +172,7 @@ func initHTTPClient(timeout int) {
 }
 
 // ffmpeg 把ts转换mp4
-func ffmpeg(ts, tempDir, saveDir string) error {
+func ffmpeg(ts, tempDir, saveDir string, ffmpegPath string) error {
 	fmt.Println("正在转换ts为mp4...")
 
 	// 清理文件名中的非法字符
@@ -153,7 +180,14 @@ func ffmpeg(ts, tempDir, saveDir string) error {
 	tsPath := filepath.Join(tempDir, sanitizedTs+".ts")
 	mp4Path := filepath.Join(saveDir, sanitizedTs+".mp4")
 
-	cmd := exec.Command("ffmpeg", "-i", tsPath, "-c:v", "copy", "-c:a", "copy", "-f", "mp4", "-y", mp4Path)
+	// 确定ffmpeg命令路径
+	ffmpegCmd := "ffmpeg"
+	if ffmpegPath != "" {
+		ffmpegCmd = ffmpegPath
+		fmt.Printf("使用指定的FFmpeg路径: %s\n", ffmpegPath)
+	}
+
+	cmd := exec.Command(ffmpegCmd, "-i", tsPath, "-c:v", "copy", "-c:a", "copy", "-f", "mp4", "-y", mp4Path)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		fmt.Printf("FFmpeg转换失败: %v\n输出: %s\n", err, string(output))
@@ -291,8 +325,9 @@ func startChrome(config *Config) error {
 // saveDir: 保存目录
 // Thread：线程数
 // tempDir: 临时目录（必须提供，不能为空）
+// ffmpegPath: FFmpeg可执行文件路径
 // 注意：临时目录的创建和清理由调用方负责
-func M3u8Down(title, playbackUrl, saveDir string, Thread int, tempDir string) error {
+func M3u8Down(title, playbackUrl, saveDir string, Thread int, tempDir string, ffmpegPath string) error {
 	// 临时目录必须由调用方提供
 	if tempDir == "" {
 		return fmt.Errorf("临时目录不能为空")
@@ -314,7 +349,7 @@ func M3u8Down(title, playbackUrl, saveDir string, Thread int, tempDir string) er
 	}
 	fmt.Println("下载成功")
 
-	if err := ffmpegFunc(title, tempDir, saveDir); err != nil {
+	if err := ffmpegFunc(title, tempDir, saveDir, ffmpegPath); err != nil {
 		return fmt.Errorf("视频转换失败: %w", err)
 	}
 
@@ -427,11 +462,126 @@ func getLiveRoomPublicInfo(roomId, liveUuid, saveDir string, Thread int, config 
 	fmt.Printf("临时文件夹创建成功: %s\n", tempDir)
 	defer tempDirCleanup(tempDir)
 
-	if err := M3u8Down(title, playbackUrl, saveDir, Thread, tempDir); err != nil {
+	if err := M3u8Down(title, playbackUrl, saveDir, Thread, tempDir, config.FFmpegPath); err != nil {
 		return title, err
 	}
 
 	return title, nil
+}
+
+// getLiveRoomPublicInfoWithTitle 函数用于获取钉钉直播间的公开信息，但使用指定的标题
+// roomId：直播间ID
+// liveUuid：直播UUID
+// specifiedTitle：指定的标题（用于文件命名）
+func getLiveRoomPublicInfoWithTitle(roomId, liveUuid, specifiedTitle, saveDir string, Thread int, config *Config) (string, error) {
+	// 构造URL
+	urlStr := "https://lv.dingtalk.com/getOpenLiveInfo?roomId=" + roomId + "&liveUuid=" + liveUuid
+	urlObj, err := url.Parse(urlStr)
+	if err != nil {
+		return "", fmt.Errorf("URL 解析失败: %w", err)
+	}
+
+	// 创建请求
+	req, err := http.NewRequest("GET", urlObj.String(), nil)
+	if err != nil {
+		return "", fmt.Errorf("创建请求失败: %w", err)
+	}
+
+	// 读取Cookies文件
+	jsonCookies, err := os.ReadFile(config.CookiesFile)
+	if err != nil {
+		return "", fmt.Errorf("读取 Cookies 文件失败: %w", err)
+	}
+
+	var cookies map[string]string
+	if err := json.Unmarshal(jsonCookies, &cookies); err != nil {
+		return "", fmt.Errorf("解析 Cookies 失败: %w", err)
+	}
+
+	// 添加Cookies到请求
+	var cookieStr strings.Builder
+	for name, value := range cookies {
+		cookieStr.WriteString(fmt.Sprintf("%s=%s; ", name, value))
+	}
+	// 确保 PC_SESSION 使用 LV_PC_SESSION 的值
+	CookiepcSession, ok := cookies["LV_PC_SESSION"]
+	if !ok {
+		return "", fmt.Errorf("未找到 LV_PC_SESSION Cookie，请重新登录")
+	}
+	cookieStr.WriteString(fmt.Sprintf("PC_SESSION=%s", CookiepcSession))
+	cookieHeader := cookieStr.String()
+
+	// 设置请求头
+	req.Header.Set("Host", "lv.dingtalk.com")
+	req.Header.Set("Cookie", cookieHeader)
+	req.Header.Set("Sec-Ch-Ua", `"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"`)
+	req.Header.Set("Sec-Ch-Ua-Mobile", "?0")
+	req.Header.Set("Sec-Ch-Ua-Platform", "macOS")
+	req.Header.Set("Dnt", "1")
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+	req.Header.Set("Sec-Fetch-Site", "none")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-User", "?1")
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
+
+	// 发送请求（使用全局 HTTP 客户端）
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("发送请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 读取响应内容
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("读取响应内容失败: %w", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("解析响应 JSON 失败: %w", err)
+	}
+
+	// 安全地获取嵌套字段
+	openLiveDetailModel, ok := result["openLiveDetailModel"].(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("响应格式错误: 未找到 openLiveDetailModel 字段")
+	}
+
+	title, ok := openLiveDetailModel["title"].(string)
+	if !ok {
+		return "", fmt.Errorf("响应格式错误: 未找到 title 字段")
+	}
+
+	playbackUrl, ok := openLiveDetailModel["playbackUrl"].(string)
+	if !ok {
+		return "", fmt.Errorf("响应格式错误: 未找到 playbackUrl 字段")
+	}
+
+	fmt.Println("标题:", title)
+	fmt.Println("回放地址:", playbackUrl)
+
+	// 检查回放地址是否为空
+	if playbackUrl == "" {
+		return "", fmt.Errorf("回放地址为空，可能直播尚未结束或回放不可用")
+	}
+
+	tempDir, err := tempDirFactory(saveDir)
+	if err != nil {
+		return title, err
+	}
+	fmt.Printf("临时文件夹创建成功: %s\n", tempDir)
+	defer tempDirCleanup(tempDir)
+
+	// 使用指定的标题进行下载
+	if err := M3u8Down(specifiedTitle, playbackUrl, saveDir, Thread, tempDir, config.FFmpegPath); err != nil {
+		return specifiedTitle, err
+	}
+
+	return specifiedTitle, nil
 }
 
 // extractParamsFromURL 从多种格式的钉钉直播URL中提取 roomId 和 liveUuid
@@ -535,24 +685,585 @@ func processURL(urlStr, saveDir string, Thread int, config *Config, videoListFil
 			"3. 路径参数格式: /live-room/XXX/XXX")
 	}
 
-	title, err := getLiveRoomPublicInfo(roomId, liveUuid, saveDir, Thread, config)
+	// 对于单个URL，使用统一的标题处理流程
+	title, err := getLiveRoomPublicInfoWithUnifiedTitleProcessing(roomId, liveUuid, saveDir, Thread, config)
 
 	// 下载完成后立即追加标题到视频列表文件
 	if err == nil && videoListFile != "" && title != "" {
-		// 清理文件名中的非法字符
-		sanitizedTitle := sanitizeFileName(title)
-		if appendErr := appendTitleToVideoListFile(videoListFile, sanitizedTitle, fileExt, processedCount, saveDir); appendErr != nil {
+		// 使用处理后的最终标题（已经包含重复标题处理）
+		if appendErr := appendTitleToVideoListFile(videoListFile, title, fileExt, processedCount, saveDir); appendErr != nil {
 			fmt.Printf("警告: 追加标题到视频列表文件失败: %v\n", appendErr)
 		} else {
-			fmt.Printf("标题已添加到视频列表文件: %s (原始标题: %s)\n", sanitizedTitle, title)
+			// 获取原始标题用于显示
+			originalTitle := getOriginalTitleFromLiveInfo(roomId, liveUuid, config)
+			if originalTitle != "" && originalTitle != title {
+				fmt.Printf("标题已添加到视频列表文件: %s (原始标题: %s)\n", title, originalTitle)
+			} else {
+				fmt.Printf("标题已添加到视频列表文件: %s\n", title)
+			}
 		}
 	}
 
 	return title, err
 }
 
+// getLiveRoomPublicInfoWithUnifiedTitleProcessing 函数用于单个URL的统一标题处理
+func getLiveRoomPublicInfoWithUnifiedTitleProcessing(roomId, liveUuid, saveDir string, Thread int, config *Config) (string, error) {
+	// 先提取直播信息（包含标题和日期）
+	liveInfo, err := extractLiveInfo(roomId, liveUuid, config)
+	if err != nil {
+		return "", err
+	}
+
+	// 使用统一的标题处理流程：1. 清理非法字符 2. 处理重复标题
+	var liveInfos []*LiveInfo
+	liveInfos = append(liveInfos, liveInfo)
+	processedTitles := processAllTitles(liveInfos)
+	
+	if len(processedTitles) == 0 {
+		return "", fmt.Errorf("标题处理失败")
+	}
+
+	finalTitle := processedTitles[0]
+
+	// 使用处理后的标题进行下载
+	return getLiveRoomPublicInfoWithTitle(roomId, liveUuid, finalTitle, saveDir, Thread, config)
+}
+
+// getLiveRoomPublicInfoWithConflictCheck 函数用于处理单个URL时的标题冲突检查
+func getLiveRoomPublicInfoWithConflictCheck(roomId, liveUuid, saveDir string, Thread int, config *Config) (string, error) {
+	// 先提取直播信息（包含标题和日期）
+	liveInfo, err := extractLiveInfo(roomId, liveUuid, config)
+	if err != nil {
+		return "", err
+	}
+
+	// 检查标题是否与现有文件冲突，使用直播日期
+	finalTitle := checkAndResolveTitleConflictWithLiveDate(liveInfo, saveDir)
+
+	// 使用处理后的标题进行下载
+	return getLiveRoomPublicInfoWithTitle(roomId, liveUuid, finalTitle, saveDir, Thread, config)
+}
+
+// checkAndResolveTitleConflict 检查标题是否与现有文件冲突，并解决冲突（使用精确到秒的时间）
+func checkAndResolveTitleConflict(title, saveDir string) string {
+	// 清理文件名
+	sanitizedTitle := sanitizeFileName(title)
+	
+	// 检查文件是否已存在
+	mp4Path := filepath.Join(saveDir, sanitizedTitle+".mp4")
+	if _, err := os.Stat(mp4Path); err == nil {
+		// 文件已存在，添加时间标识符（精确到秒）
+		timeStr := time.Now().Format("20060102150405")
+		newTitle := fmt.Sprintf("%s_%s", title, timeStr)
+		sanitizedNewTitle := sanitizeFileName(newTitle)
+		
+		fmt.Printf("检测到文件冲突: '%s' → '%s'\n", title, newTitle)
+		return sanitizedNewTitle
+	}
+	
+	return sanitizedTitle
+}
+
+// checkAndResolveTitleConflictWithLiveDate 检查标题是否与现有文件冲突，并使用直播实际时间解决冲突（精确到秒）
+func checkAndResolveTitleConflictWithLiveDate(liveInfo *LiveInfo, saveDir string) string {
+	// 清理文件名
+	sanitizedTitle := sanitizeFileName(liveInfo.Title)
+	
+	// 检查文件是否已存在
+	mp4Path := filepath.Join(saveDir, sanitizedTitle+".mp4")
+	if _, err := os.Stat(mp4Path); err == nil {
+		// 文件已存在，添加直播时间标识符（精确到秒）
+		var timeStr string
+		if liveInfo.StartTime > 0 {
+			// 将Unix毫秒时间戳转换为时间（精确到秒）
+			timeObj := time.Unix(liveInfo.StartTime/1000, 0)
+			timeStr = timeObj.Format("20060102150405")
+		} else {
+			// 如果没有直播时间，使用当前时间作为备用
+			timeStr = time.Now().Format("20060102150405")
+		}
+		newTitle := fmt.Sprintf("%s_%s", liveInfo.Title, timeStr)
+		sanitizedNewTitle := sanitizeFileName(newTitle)
+		
+		if liveInfo.StartTime > 0 {
+			fmt.Printf("检测到文件冲突: '%s' → '%s' (使用直播时间)\n", liveInfo.Title, newTitle)
+		} else {
+			fmt.Printf("检测到文件冲突: '%s' → '%s' (使用当前时间作为备用，无法获取直播时间)\n", liveInfo.Title, newTitle)
+		}
+		
+		return sanitizedNewTitle
+	}
+	
+	return sanitizedTitle
+}
+
+// extractAllTitlesToMemory 从所有URL中提取标题到内存中，不创建临时文件
+// 统一处理：非法字符清理 + 重复标题处理
+func extractAllTitlesToMemory(urlFile, saveDir string, config *Config) ([]string, error) {
+	file, err := os.Open(urlFile)
+	if err != nil {
+		return nil, fmt.Errorf("打开文件时出错: %w", err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	lineNum := 0
+	processedCount := 0
+	var liveInfos []*LiveInfo
+
+	fmt.Println("正在提取所有视频标题和日期...")
+
+	for scanner.Scan() {
+		lineNum++
+		urlStr := strings.TrimSpace(scanner.Text())
+		if urlStr == "" || strings.HasPrefix(urlStr, "#") {
+			continue // 跳过空行和注释
+		}
+
+		processedCount++
+		fmt.Printf("\n[%d] 提取标题和日期: %s\n", processedCount, urlStr)
+
+		roomId, liveUuid, err := extractParamsFromURL(urlStr)
+		if err != nil {
+			errMsg := fmt.Errorf("第 %d 行URL解析失败: %w", lineNum, err)
+			fmt.Println(errMsg)
+			liveInfos = append(liveInfos, &LiveInfo{Title: "[Failed to read title]"})
+			continue
+		}
+
+		liveInfo, err := extractLiveInfo(roomId, liveUuid, config)
+		if err != nil {
+			errMsg := fmt.Errorf("第 %d 行提取标题失败: %w", lineNum, err)
+			fmt.Println(errMsg)
+			liveInfos = append(liveInfos, &LiveInfo{Title: "[Failed to read title]"})
+		} else {
+			liveInfos = append(liveInfos, liveInfo)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("读取文件时出错: %w", err)
+	}
+
+	// 统一标题处理流程：1. 清理非法字符 2. 处理重复标题
+	titles := processAllTitles(liveInfos)
+
+	fmt.Printf("所有标题已提取完成，共处理 %d 个标题\n", len(titles))
+	return titles, nil
+}
+
+// extractAllTitles 从所有URL中提取标题并保存到临时文件
+// 统一处理：非法字符清理 + 重复标题处理
+func extractAllTitles(urlFile, saveDir string, config *Config) (string, error) {
+	file, err := os.Open(urlFile)
+	if err != nil {
+		return "", fmt.Errorf("打开文件时出错: %w", err)
+	}
+	defer file.Close()
+
+	tempFile := filepath.Join(saveDir, ".All_titles_temp.txt")
+	outputFile, err := os.Create(tempFile)
+	if err != nil {
+		return "", fmt.Errorf("创建临时标题文件失败: %w", err)
+	}
+	defer outputFile.Close()
+
+	scanner := bufio.NewScanner(file)
+	lineNum := 0
+	processedCount := 0
+	var liveInfos []*LiveInfo
+
+	fmt.Println("正在提取所有视频标题和日期...")
+
+	for scanner.Scan() {
+		lineNum++
+		urlStr := strings.TrimSpace(scanner.Text())
+		if urlStr == "" || strings.HasPrefix(urlStr, "#") {
+			continue // 跳过空行和注释
+		}
+
+		processedCount++
+		fmt.Printf("\n[%d] 提取标题和日期: %s\n", processedCount, urlStr)
+
+		roomId, liveUuid, err := extractParamsFromURL(urlStr)
+		if err != nil {
+			errMsg := fmt.Errorf("第 %d 行URL解析失败: %w", lineNum, err)
+			fmt.Println(errMsg)
+			liveInfos = append(liveInfos, &LiveInfo{Title: "[Failed to read title]"})
+			continue
+		}
+
+		liveInfo, err := extractLiveInfo(roomId, liveUuid, config)
+		if err != nil {
+			errMsg := fmt.Errorf("第 %d 行提取标题失败: %w", lineNum, err)
+			fmt.Println(errMsg)
+			liveInfos = append(liveInfos, &LiveInfo{Title: "[Failed to read title]"})
+		} else {
+			liveInfos = append(liveInfos, liveInfo)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("读取文件时出错: %w", err)
+	}
+
+	// 统一标题处理流程：1. 清理非法字符 2. 处理重复标题
+	titles := processAllTitles(liveInfos)
+
+	// 写入临时文件
+	for _, title := range titles {
+		if _, err := outputFile.WriteString(title + "\n"); err != nil {
+			return "", fmt.Errorf("写入临时文件失败: %w", err)
+		}
+	}
+
+	fmt.Printf("所有标题已提取并保存到: %s\n", tempFile)
+	return tempFile, nil
+}
+
+// LiveInfo 包含直播标题和日期信息
+type LiveInfo struct {
+	Title     string
+	StartTime int64 // Unix毫秒时间戳
+}
+
+// extractLiveInfo 提取直播标题和日期信息，不进行下载
+func extractLiveInfo(roomId, liveUuid string, config *Config) (*LiveInfo, error) {
+	urlStr := "https://lv.dingtalk.com/getOpenLiveInfo?roomId=" + roomId + "&liveUuid=" + liveUuid
+	urlObj, err := url.Parse(urlStr)
+	if err != nil {
+		return nil, fmt.Errorf("URL 解析失败: %w", err)
+	}
+
+	req, err := http.NewRequest("GET", urlObj.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建请求失败: %w", err)
+	}
+
+	// 读取Cookies文件
+	jsonCookies, err := os.ReadFile(config.CookiesFile)
+	if err != nil {
+		return nil, fmt.Errorf("读取 Cookies 文件失败: %w", err)
+	}
+
+	var cookies map[string]string
+	if err := json.Unmarshal(jsonCookies, &cookies); err != nil {
+		return nil, fmt.Errorf("解析 Cookies 失败: %w", err)
+	}
+
+	// 添加Cookies到请求
+	var cookieStr strings.Builder
+	for name, value := range cookies {
+		cookieStr.WriteString(fmt.Sprintf("%s=%s; ", name, value))
+	}
+	CookiepcSession, ok := cookies["LV_PC_SESSION"]
+	if !ok {
+		return nil, fmt.Errorf("未找到 LV_PC_SESSION Cookie，请重新登录")
+	}
+	cookieStr.WriteString(fmt.Sprintf("PC_SESSION=%s", CookiepcSession))
+	cookieHeader := cookieStr.String()
+
+	// 设置请求头
+	req.Header.Set("Host", "lv.dingtalk.com")
+	req.Header.Set("Cookie", cookieHeader)
+	req.Header.Set("Sec-Ch-Ua", `"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"`)
+	req.Header.Set("Sec-Ch-Ua-Mobile", "?0")
+	req.Header.Set("Sec-Ch-Ua-Platform", "macOS")
+	req.Header.Set("Dnt", "1")
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+	req.Header.Set("Sec-Fetch-Site", "none")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-User", "?1")
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
+
+	// 发送请求
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("发送请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 读取响应内容
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取响应内容失败: %w", err)
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("解析响应 JSON 失败: %w", err)
+	}
+
+	openLiveDetailModel, ok := result["openLiveDetailModel"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("响应格式错误: 未找到 openLiveDetailModel 字段")
+	}
+
+	title, ok := openLiveDetailModel["title"].(string)
+	if !ok {
+		return nil, fmt.Errorf("响应格式错误: 未找到 title 字段")
+	}
+
+	// 提取直播开始时间
+	var startTime int64
+	var hasStartTime bool
+	
+	if startTimeVal, exists := openLiveDetailModel["startTime"]; exists {
+		if startTimeFloat, ok := startTimeVal.(float64); ok {
+			startTime = int64(startTimeFloat)
+			hasStartTime = true
+		} else if startTimeInt, ok := startTimeVal.(int64); ok {
+			startTime = startTimeInt
+			hasStartTime = true
+		} else {
+			// 无法解析startTime字段
+			fmt.Printf("警告: 无法解析startTime字段，类型: %T，值: %v\n", startTimeVal, startTimeVal)
+			hasStartTime = false
+		}
+	} else {
+		// startTime字段不存在
+		fmt.Printf("警告: 响应中未找到startTime字段\n")
+		hasStartTime = false
+	}
+
+	// 如果没有识别到startTime，记录警告信息
+	if !hasStartTime {
+		fmt.Printf("警告: 无法获取直播开始时间，将使用当前时间作为备用\n")
+		// 尝试从其他可能的时间字段获取
+		startTime = tryExtractAlternativeTime(openLiveDetailModel)
+		if startTime == 0 {
+			fmt.Printf("警告: 无法从任何时间字段获取直播时间\n")
+		}
+	}
+
+	return &LiveInfo{
+		Title:     title,
+		StartTime: startTime,
+	}, nil
+}
+
+// tryExtractAlternativeTime 尝试从其他可能的时间字段获取直播时间
+func tryExtractAlternativeTime(openLiveDetailModel map[string]interface{}) int64 {
+	// 尝试可能的替代时间字段
+	alternativeTimeFields := []string{"apptBeginTime", "endTime", "createTime", "serverTimestamp"}
+	
+	for _, field := range alternativeTimeFields {
+		if timeVal, exists := openLiveDetailModel[field]; exists {
+			var timeInt int64
+			
+			switch v := timeVal.(type) {
+			case float64:
+				timeInt = int64(v)
+			case int64:
+				timeInt = v
+			case int:
+				timeInt = int64(v)
+			default:
+				continue // 无法解析该字段
+			}
+			
+			if timeInt > 0 {
+				fmt.Printf("信息: 从替代字段 '%s' 获取时间: %d\n", field, timeInt)
+				return timeInt
+			}
+		}
+	}
+	
+	return 0 // 没有找到可用的时间字段
+}
+
+// extractTitleFromLiveInfo 向后兼容的函数，仅提取直播标题
+func extractTitleFromLiveInfo(roomId, liveUuid string, config *Config) (string, error) {
+	liveInfo, err := extractLiveInfo(roomId, liveUuid, config)
+	if err != nil {
+		return "", err
+	}
+	return liveInfo.Title, nil
+}
+
+// processDuplicateTitlesWithLiveDate 处理重复标题，精确控制标识符添加逻辑
+func processDuplicateTitlesWithLiveDate(liveInfos []*LiveInfo) []string {
+	// 统计标题出现次数
+	titleCount := make(map[string]int)
+	// 统计每个唯一标识符（标题+时间）出现次数
+	identifierCount := make(map[string]int)
+	processedTitles := make([]string, len(liveInfos))
+
+	// 第一次遍历：统计标题出现次数和标识符出现次数
+	for i, liveInfo := range liveInfos {
+		if liveInfo.Title == "[Failed to read title]" {
+			processedTitles[i] = liveInfo.Title
+			continue
+		}
+
+		// 统计标题出现次数
+		titleCount[liveInfo.Title] = titleCount[liveInfo.Title] + 1
+
+		// 创建唯一标识符（标题 + 时间）
+		var timeStr string
+		if liveInfo.StartTime > 0 {
+			// 将Unix毫秒时间戳转换为时间（精确到秒）
+			timeObj := time.Unix(liveInfo.StartTime/1000, 0)
+			timeStr = timeObj.Format("20060102150405")
+		} else {
+			// 如果没有直播时间，使用当前时间作为备用
+			timeStr = time.Now().Format("20060102150405")
+		}
+		
+		baseIdentifier := fmt.Sprintf("%s_%s", liveInfo.Title, timeStr)
+		identifierCount[baseIdentifier] = identifierCount[baseIdentifier] + 1
+	}
+
+	// 第二次遍历：根据标题和时间的重复情况处理标题
+	identifierUsed := make(map[string]int) // 跟踪每个标识符的实际使用次数
+	for i, liveInfo := range liveInfos {
+		if liveInfo.Title == "[Failed to read title]" {
+			processedTitles[i] = liveInfo.Title
+			continue
+		}
+
+		// 创建唯一标识符（标题 + 时间）
+		var timeStr string
+		if liveInfo.StartTime > 0 {
+			// 将Unix毫秒时间戳转换为时间（精确到秒）
+			timeObj := time.Unix(liveInfo.StartTime/1000, 0)
+			timeStr = timeObj.Format("20060102150405")
+		} else {
+			// 如果没有直播时间，使用当前时间作为备用
+			timeStr = time.Now().Format("20060102150405")
+		}
+		
+		baseIdentifier := fmt.Sprintf("%s_%s", liveInfo.Title, timeStr)
+		titleCountForTitle := titleCount[liveInfo.Title]
+		countForIdentifier := identifierCount[baseIdentifier]
+		
+		// 处理逻辑：
+		// 1. 标题不重复：保持原标题（不输出日志）
+		// 2. 标题重复但时间不同：标题名_时间标识符
+		// 3. 标题和时间都重复：标题名_时间标识符_序号
+		
+		if titleCountForTitle == 1 {
+			// 标题不重复，保持原标题（不输出日志）
+			processedTitles[i] = liveInfo.Title
+		} else if titleCountForTitle > 1 && countForIdentifier == 1 {
+			// 标题重复但时间不同：标题名_时间标识符
+			processedTitles[i] = baseIdentifier
+			fmt.Printf("检测到重复标题: '%s' → '%s' (使用时间标识符)\n", liveInfo.Title, baseIdentifier)
+		} else if countForIdentifier > 1 {
+			// 标题和时间都重复：添加序号
+			identifierUsed[baseIdentifier] = identifierUsed[baseIdentifier] + 1
+			newTitle := fmt.Sprintf("%s_%d", baseIdentifier, identifierUsed[baseIdentifier])
+			processedTitles[i] = newTitle
+			
+			if liveInfo.StartTime > 0 {
+				fmt.Printf("检测到重复标题和时间: '%s' → '%s' (使用直播时间+序号)\n", liveInfo.Title, newTitle)
+			} else {
+				fmt.Printf("检测到重复标题和时间: '%s' → '%s' (使用当前时间+序号，无法获取直播时间)\n", liveInfo.Title, newTitle)
+			}
+		}
+	}
+
+	return processedTitles
+}
+
+// processAllTitles 统一处理所有标题：1. 清理非法字符 2. 处理重复标题
+func processAllTitles(liveInfos []*LiveInfo) []string {
+	// 第一步：清理所有标题的非法字符
+	var processedLiveInfos []*LiveInfo
+	for _, liveInfo := range liveInfos {
+		if liveInfo.Title == "[Failed to read title]" {
+			processedLiveInfos = append(processedLiveInfos, &LiveInfo{
+				Title:     liveInfo.Title,
+				StartTime: liveInfo.StartTime,
+			})
+		} else {
+			cleanedTitle := sanitizeFileName(liveInfo.Title)
+			processedLiveInfos = append(processedLiveInfos, &LiveInfo{
+				Title:     cleanedTitle,
+				StartTime: liveInfo.StartTime,
+			})
+		}
+	}
+
+	// 第二步：处理重复标题，使用直播实际时间
+	return processDuplicateTitlesWithLiveDate(processedLiveInfos)
+}
+
+// processDuplicateTitles 处理重复标题，精确控制标识符添加逻辑
+func processDuplicateTitles(titles []string) []string {
+	// 统计标题出现次数
+	titleCount := make(map[string]int)
+	// 统计每个唯一标识符（标题+时间）出现次数
+	identifierCount := make(map[string]int)
+	processedTitles := make([]string, len(titles))
+
+	// 第一次遍历：统计标题出现次数和标识符出现次数
+	for i, title := range titles {
+		if title == "[Failed to read title]" {
+			processedTitles[i] = title
+			continue
+		}
+
+		// 统计标题出现次数
+		titleCount[title] = titleCount[title] + 1
+
+		// 创建唯一标识符（标题 + 时间）
+		timeStr := time.Now().Format("20060102150405")
+		baseIdentifier := fmt.Sprintf("%s_%s", title, timeStr)
+		identifierCount[baseIdentifier] = identifierCount[baseIdentifier] + 1
+	}
+
+	// 第二次遍历：根据标题和时间的重复情况处理标题
+	identifierUsed := make(map[string]int) // 跟踪每个标识符的实际使用次数
+	for i, title := range titles {
+		if title == "[Failed to read title]" {
+			processedTitles[i] = title
+			continue
+		}
+
+		// 创建唯一标识符（标题 + 时间）
+		timeStr := time.Now().Format("20060102150405")
+		baseIdentifier := fmt.Sprintf("%s_%s", title, timeStr)
+		titleCountForTitle := titleCount[title]
+		countForIdentifier := identifierCount[baseIdentifier]
+		
+		// 处理逻辑：
+		// 1. 标题不重复：保持原标题（不输出日志）
+		// 2. 标题重复但时间不同：标题名_时间标识符
+		// 3. 标题和时间都重复：标题名_时间标识符_序号
+		
+		if titleCountForTitle == 1 {
+			// 标题不重复，保持原标题（不输出日志）
+			processedTitles[i] = title
+		} else if titleCountForTitle > 1 && countForIdentifier == 1 {
+			// 标题重复但时间不同：标题名_时间标识符
+			processedTitles[i] = baseIdentifier
+			fmt.Printf("检测到重复标题: '%s' → '%s' (使用时间标识符)\n", title, baseIdentifier)
+		} else if countForIdentifier > 1 {
+			// 标题和时间都重复：添加序号
+			identifierUsed[baseIdentifier] = identifierUsed[baseIdentifier] + 1
+			newTitle := fmt.Sprintf("%s_%d", baseIdentifier, identifierUsed[baseIdentifier])
+			processedTitles[i] = newTitle
+			
+			fmt.Printf("检测到重复标题和时间: '%s' → '%s' (使用当前时间+序号)\n", title, newTitle)
+		}
+	}
+
+	return processedTitles
+}
+
 // processURLFromFile 从文件中读取URL进行处理
 func processURLFromFile(filePath, saveDir string, Thread int, config *Config, videoListFile, fileExt string) ([]string, error) {
+	// 先提取所有标题到内存中，不创建临时文件
+	processedTitles, err := extractAllTitlesToMemory(filePath, saveDir, config)
+	if err != nil {
+		return nil, fmt.Errorf("提取标题失败: %w", err)
+	}
+
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("打开文件时出错: %w", err)
@@ -562,6 +1273,7 @@ func processURLFromFile(filePath, saveDir string, Thread int, config *Config, vi
 	scanner := bufio.NewScanner(file)
 	lineNum := 0
 	processedCount := 0 // 实际处理的URL计数器
+	titleIndex := 0     // 标题索引
 	var errors []error
 	var titles []string
 
@@ -574,14 +1286,25 @@ func processURLFromFile(filePath, saveDir string, Thread int, config *Config, vi
 
 		processedCount++ // 只有实际处理的URL才递增
 		fmt.Printf("\n[%d] 处理 URL: %s\n", processedCount, urlStr)
-		title, err := processURL(urlStr, saveDir, Thread, config, videoListFile, fileExt, processedCount)
+
+		// 获取对应的处理后的标题
+		if titleIndex >= len(processedTitles) {
+			errMsg := fmt.Errorf("第 %d 行: 标题数量不匹配", lineNum)
+			fmt.Println(errMsg)
+			errors = append(errors, errMsg)
+			continue
+		}
+
+		processedTitle := processedTitles[titleIndex]
+		titleIndex++
+
+		title, err := processURLWithTitle(urlStr, processedTitle, saveDir, Thread, config, videoListFile, fileExt, processedCount)
 		if err != nil {
 			errMsg := fmt.Errorf("第 %d 行处理失败: %w", lineNum, err)
 			fmt.Println(errMsg)
 			errors = append(errors, errMsg)
 		} else {
 			titles = append(titles, title)
-			// 标题已经在 processURL 函数中追加到视频列表文件，这里不需要重复追加
 		}
 	}
 
@@ -594,6 +1317,150 @@ func processURLFromFile(filePath, saveDir string, Thread int, config *Config, vi
 	}
 
 	return titles, nil
+}
+
+// readTitleLines 读取标题文件的所有行
+func readTitleLines(filePath string) ([]string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("打开标题文件失败: %w", err)
+	}
+	defer file.Close()
+
+	var lines []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		lines = append(lines, strings.TrimSpace(scanner.Text()))
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("读取标题文件失败: %w", err)
+	}
+
+	return lines, nil
+}
+
+// processURLWithTitle 使用指定的标题处理URL
+func processURLWithTitle(urlStr, processedTitle, saveDir string, Thread int, config *Config, videoListFile, fileExt string, processedCount int) (string, error) {
+	roomId, liveUuid, err := extractParamsFromURL(urlStr)
+	if err != nil {
+		return "", err
+	}
+
+	if roomId == "" || liveUuid == "" {
+		return "", fmt.Errorf("URL 中缺少 roomId 或 liveUuid 参数，请确保 URL 格式正确。支持的格式包括：\n" +
+			"1. 查询参数格式: ?roomId=XXX&liveUuid=XXX\n" +
+			"2. Hash路由格式: #/live?roomId=XXX&liveUuid=XXX\n" +
+			"3. 路径参数格式: /live-room/XXX/XXX")
+	}
+
+	// 使用处理后的标题进行下载
+	title, err := getLiveRoomPublicInfoWithTitle(roomId, liveUuid, processedTitle, saveDir, Thread, config)
+
+	// 下载完成后立即追加标题到视频列表文件
+	if err == nil && videoListFile != "" && title != "" {
+		// 使用处理后的最终标题（已经包含重复标题处理）
+		if appendErr := appendTitleToVideoListFile(videoListFile, title, fileExt, processedCount, saveDir); appendErr != nil {
+			fmt.Printf("警告: 追加标题到视频列表文件失败: %v\n", appendErr)
+		} else {
+			// 获取原始标题用于显示
+			originalTitle := getOriginalTitleFromLiveInfo(roomId, liveUuid, config)
+			if originalTitle != "" && originalTitle != title {
+				fmt.Printf("标题已添加到视频列表文件: %s (原始标题: %s)\n", title, originalTitle)
+			} else {
+				fmt.Printf("标题已添加到视频列表文件: %s\n", title)
+			}
+		}
+	}
+
+	return title, err
+}
+
+// getOriginalTitleFromLiveInfo 获取直播的原始标题
+func getOriginalTitleFromLiveInfo(roomId, liveUuid string, config *Config) string {
+	// 构造URL
+	urlStr := "https://lv.dingtalk.com/getOpenLiveInfo?roomId=" + roomId + "&liveUuid=" + liveUuid
+	urlObj, err := url.Parse(urlStr)
+	if err != nil {
+		return ""
+	}
+
+	// 创建请求
+	req, err := http.NewRequest("GET", urlObj.String(), nil)
+	if err != nil {
+		return ""
+	}
+
+	// 读取Cookies文件
+	jsonCookies, err := os.ReadFile(config.CookiesFile)
+	if err != nil {
+		return ""
+	}
+
+	var cookies map[string]string
+	if err := json.Unmarshal(jsonCookies, &cookies); err != nil {
+		return ""
+	}
+
+	// 添加Cookies到请求
+	var cookieStr strings.Builder
+	for name, value := range cookies {
+		cookieStr.WriteString(fmt.Sprintf("%s=%s; ", name, value))
+	}
+	// 确保 PC_SESSION 使用 LV_PC_SESSION 的值
+	CookiepcSession, ok := cookies["LV_PC_SESSION"]
+	if !ok {
+		return ""
+	}
+	cookieStr.WriteString(fmt.Sprintf("PC_SESSION=%s", CookiepcSession))
+	cookieHeader := cookieStr.String()
+
+	// 设置请求头
+	req.Header.Set("Host", "lv.dingtalk.com")
+	req.Header.Set("Cookie", cookieHeader)
+	req.Header.Set("Sec-Ch-Ua", `"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"`)
+	req.Header.Set("Sec-Ch-Ua-Mobile", "?0")
+	req.Header.Set("Sec-Ch-Ua-Platform", "macOS")
+	req.Header.Set("Dnt", "1")
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+	req.Header.Set("Sec-Fetch-Site", "none")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-User", "?1")
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
+
+	// 发送请求（使用全局 HTTP 客户端）
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+
+	// 读取响应内容
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ""
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return ""
+	}
+
+	// 安全地获取嵌套字段
+	openLiveDetailModel, ok := result["openLiveDetailModel"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+
+	title, ok := openLiveDetailModel["title"].(string)
+	if !ok {
+		return ""
+	}
+
+	return title
 }
 
 // checkCookiesValid 检查cookies文件是否存在且有效
@@ -656,6 +1523,7 @@ func main() {
 	chromeTimeout := flag.Int("chromeTimeout", 0, "Chrome登录超时时间，单位分钟 (默认: 20)")
 	chromePath := flag.String("chromePath", "", "Chrome可执行文件路径，用于指定特定的Chrome/Chromium位置")
 	cookiesFile := flag.String("cookies", "", "Cookies文件路径")
+	ffmpegPath := flag.String("ffmpegPath", "", "FFmpeg可执行文件路径，用于指定特定的FFmpeg位置")
 
 	flag.Parse()
 
@@ -691,7 +1559,17 @@ func main() {
 	if *cookiesFile != "" {
 		config.CookiesFile = *cookiesFile
 	}
+	if *ffmpegPath != "" {
+		config.FFmpegPath = *ffmpegPath
+	}
 
+	// 路径处理：先解析相对路径，再进行WSL路径转换
+	resolvedCookies := resolveRelativePath(config.CookiesFile)
+	if resolvedCookies != config.CookiesFile {
+		fmt.Printf("Cookies文件路径已解析: %s → %s\n", config.CookiesFile, resolvedCookies)
+		config.CookiesFile = resolvedCookies
+	}
+	
 	normalizedCookies := normalizePathForRuntime(config.CookiesFile)
 	if normalizedCookies != config.CookiesFile {
 		fmt.Printf("Cookies文件路径已转换: %s → %s\n", config.CookiesFile, normalizedCookies)
@@ -809,7 +1687,9 @@ func appendTitleToVideoListFile(filePath, title, fileExt string, processedCount 
 	}
 	defer file.Close()
 
-	videoPath := filepath.Join(saveDir, title+".mp4")
+	// 清理文件名中的非法字符（确保与保存的文件名一致）
+	sanitizedTitle := sanitizeFileName(title)
+	videoPath := filepath.Join(saveDir, sanitizedTitle+".mp4")
 	relPath, err := filepath.Rel(filepath.Dir(filePath), videoPath)
 	if err != nil {
 		return fmt.Errorf("计算相对路径失败: %w", err)
@@ -817,13 +1697,13 @@ func appendTitleToVideoListFile(filePath, title, fileExt string, processedCount 
 
 	switch fileExt {
 	case ".txt":
-		_, err = file.WriteString(title + "\n")
+		_, err = file.WriteString(sanitizedTitle + "\n")
 	case ".m3u", ".m3u8":
 		_, err = file.WriteString(filepath.ToSlash(relPath) + "\n")
 	case ".dpl":
 		_, err = file.WriteString(strconv.Itoa(processedCount) + "*file*" + relPath + "\n")
 	default:
-		_, err = file.WriteString(title + "\n")
+		_, err = file.WriteString(sanitizedTitle + "\n")
 	}
 	if err != nil {
 		return fmt.Errorf("写入文件失败: %w", err)

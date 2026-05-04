@@ -2,7 +2,7 @@
 
 # 项目名称
 PROJECT_NAME="GoDingtalk"
-VERSION="${1:-v2.1.2}"
+VERSION="${1:-v2.5.1}"
 
 # 创建构建目录
 BUILD_DIR="build"

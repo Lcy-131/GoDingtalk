@@ -20,6 +20,8 @@ type Config struct {
 	ChromeTimeout int `json:"chrome_timeout"`
 	// HTTP超时时间（秒）
 	HTTPTimeout int `json:"http_timeout"`
+	// FFmpeg可执行文件路径
+	FFmpegPath string `json:"ffmpeg_path"`
 }
 
 // getConfigDir 获取配置文件夹路径
@@ -41,19 +43,14 @@ func getConfigDir() (string, error) {
 
 // DefaultConfig 返回默认配置
 func DefaultConfig() *Config {
-	configDir, err := getConfigDir()
-	if err != nil {
-		// 如果获取配置文件夹失败，使用当前目录
-		configDir = "."
-	}
-	
 	return &Config{
 		ThreadCount:   10,
 		SaveDirectory: "video/",
-		CookiesFile:   filepath.Join(configDir, "cookies.json"),
+		CookiesFile:   filepath.Join(".goDingtalkConfig", "cookies.json"), // 相对于可执行文件的路径
 		ChromePath:    "",
 		ChromeTimeout: 20,
 		HTTPTimeout:   30,
+		FFmpegPath:    "", // 默认为空，使用系统PATH中的ffmpeg
 	}
 }
 

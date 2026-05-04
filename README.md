@@ -40,8 +40,29 @@ go build -o GoDingtalk .
 # Windows
 ./GoDingtalk.exe -url="..." -chromePath="C:\Program Files\Google\Chrome\Application\chrome.exe"
 
+# Linux
+./GoDingtalk -url="..." -chromePath="/usr/bin/google-chrome"
+
 # WSL (指定 Windows 版 Chrome)
 ./GoDingtalk -url="..." -chromePath="/mnt/c/Program Files/Google/Chrome/Application/chrome.exe"
+```
+
+### 指定 FFmpeg 路径
+
+如果系统安装了多个 FFmpeg 版本，或 FFmpeg 不在标准路径：
+
+```bash
+# macOS
+./GoDingtalk -url="..." -ffmpegPath="/usr/local/bin/ffmpeg"
+
+# Windows
+./GoDingtalk.exe -url="..." -ffmpegPath="C:\ffmpeg\bin\ffmpeg.exe"
+
+# Linux
+./GoDingtalk -url="..." -ffmpegPath="/usr/bin/ffmpeg"
+
+# 使用相对路径
+./GoDingtalk -url="..." -ffmpegPath="./tools/ffmpeg.exe"
 ```
 
 ### 批量下载
@@ -71,7 +92,13 @@ go build -o GoDingtalk .
 | `-httpTimeout` | HTTP 超时时间（秒） | 30 |
 | `-chromeTimeout` | Chrome 登录超时时间（分钟） | 20 |
 | `-chromePath` | Chrome/Chromium 可执行文件路径 | 自动查找 |
+| `-ffmpegPath` | FFmpeg 可执行文件路径 | 选择同目录下或在环境变量 PATH 中的 FFmpeg 可执行文件 |
 | `-version` | 显示版本号 | |
+| `-h` | 显示帮助信息 | |
+
+注：
+1、线程数设置太高，会导致不可预测的问题（如[IOException]）。建议设置为 20 或以下。
+2、所有路径参数均可使用相对路径或绝对路径，但 Cookies 文件路径的相对路径是相对于可执行文件的目录计算的，而其他路径参数是相对于当前工作目录计算的。
 
 ### 配置文件
 
@@ -84,7 +111,8 @@ go build -o GoDingtalk .
   "cookies_file": ".goDingtalkConfig/cookies.json",
   "chrome_path": "",
   "chrome_timeout": 20,
-  "http_timeout": 30
+  "http_timeout": 30,
+  "ffmpeg_path": ""
 }
 ```
 
