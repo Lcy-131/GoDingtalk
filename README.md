@@ -92,7 +92,7 @@ go build -o GoDingtalk .
 | `-httpTimeout` | HTTP 超时时间（秒） | 30 |
 | `-chromeTimeout` | Chrome 登录超时时间（分钟） | 20 |
 | `-chromePath` | Chrome/Chromium 可执行文件路径 | 自动查找 |
-| `-ffmpegPath` | FFmpeg 可执行文件路径 | 选择同目录下或在环境变量 PATH 中的 FFmpeg 可执行文件 |
+| `-ffmpegPath` | FFmpeg 可执行文件路径 | 选择在环境变量 PATH 中的 FFmpeg 可执行文件 |
 | `-version` | 显示版本号 | |
 | `-h` | 显示帮助信息 | |
 
